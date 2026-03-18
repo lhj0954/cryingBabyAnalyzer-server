@@ -1,7 +1,7 @@
 # 파이프 라인 실행
 # 결과 출력
-from audio_io import load_audio
-from yamnet_stage import YamnetStage
+from cryingBabyAnalyzer.src.utils.audio_io import load_audio
+from stages.yamnet_stage import YamnetStage
 
 
 def main():
