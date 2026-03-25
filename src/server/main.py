@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Optional
+from typing import Optional, Dict
 
 current_dir = os.path.dirname(os.path.abspath(__file__))    # src/server
 src_dir = os.path.abspath(os.path.join(current_dir, ".."))  # src
@@ -24,14 +24,15 @@ class AnalysisWindow(BaseModel):
 
 
 class YamnetInfo(BaseModel):
-    baby_cry_max: float
-    crying_max: float
-    merged_cry_max: float
+    baby_cry_max: float = 0.0
+    crying_max: float = 0.0
+    merged_cry_max: float = 0.0
 
 
 class Prediction(BaseModel):
     label: str
     confidence: float
+    scores: Optional[Dict[str, float]] = None
     yamnet: YamnetInfo
 
 
@@ -48,11 +49,13 @@ class InferResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "model_info": pipeline.health(),
+    }
 
 
-@app.post("/infer", response_model=InferResponse)
-async def infer(file: UploadFile = File(...)):
+async def _run_infer(file: UploadFile):
     if not file.filename:
         raise HTTPException(status_code=400, detail="파일명이 없습니다.")
 
@@ -70,3 +73,8 @@ async def infer(file: UploadFile = File(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"추론 실패: {str(e)}")
+
+
+@app.post("/infer", response_model=InferResponse)
+async def infer(file: UploadFile = File(...)):
+    return await _run_infer(file)
