@@ -49,10 +49,37 @@ class InferResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "model_info": pipeline.health(),
-    }
+    return {"status": "ok"}
+
+
+async def _run_infer(file: UploadFile):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="파일명이 없습니다.")
+
+    if not file.filename.lower().endswith(".wav"):
+        raise HTTPException(status_code=400, detail="현재는 wav만 지원합니다.")
+
+    try:
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="빈 파일입니다.")
+
+        return pipeline.predict_from_bytes(file_bytes, filename=file.filename)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"추론 실패: {str(e)}")
+
+
+@app.post("/infer", response_model=InferResponse)
+async def infer(file: UploadFile = File(...)):
+    return await _run_infer(file)
+
+
+@app.post("/predict", response_model=InferResponse)
+async def predict(file: UploadFile = File(...)):
+    return await _run_infer(file)
 
 
 async def _run_infer(file: UploadFile):
