@@ -1,6 +1,9 @@
 import os
 import sys
 from typing import Optional, Dict
+from pathlib import Path
+from datetime import datetime
+import uuid
 
 current_dir = os.path.dirname(os.path.abspath(__file__))    # src/server
 src_dir = os.path.abspath(os.path.join(current_dir, ".."))  # src
@@ -13,8 +16,12 @@ from pydantic import BaseModel
 
 from pipelines.infer_api_pipeline import InferApiPipeline
 
+
 app = FastAPI(title="cryingBabyAnalyzer API")
 pipeline = InferApiPipeline()
+
+UPLOAD_DIR = Path("uploaded_audio")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 class AnalysisWindow(BaseModel):
@@ -61,8 +68,15 @@ async def _run_infer(file: UploadFile):
 
     try:
         file_bytes = await file.read()
+
         if not file_bytes:
             raise HTTPException(status_code=400, detail="빈 파일입니다.")
+
+        saved_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{file.filename}"
+        saved_path = UPLOAD_DIR / saved_name
+
+        with open(saved_path, "wb") as f:
+            f.write(file_bytes)
 
         return pipeline.predict_from_bytes(file_bytes, filename=file.filename)
 
@@ -79,29 +93,4 @@ async def infer(file: UploadFile = File(...)):
 
 @app.post("/predict", response_model=InferResponse)
 async def predict(file: UploadFile = File(...)):
-    return await _run_infer(file)
-
-
-async def _run_infer(file: UploadFile):
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="파일명이 없습니다.")
-
-    if not file.filename.lower().endswith(".wav"):
-        raise HTTPException(status_code=400, detail="현재는 wav만 지원합니다.")
-
-    try:
-        file_bytes = await file.read()
-        if not file_bytes:
-            raise HTTPException(status_code=400, detail="빈 파일입니다.")
-
-        return pipeline.predict_from_bytes(file_bytes, filename=file.filename)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"추론 실패: {str(e)}")
-
-
-@app.post("/infer", response_model=InferResponse)
-async def infer(file: UploadFile = File(...)):
     return await _run_infer(file)

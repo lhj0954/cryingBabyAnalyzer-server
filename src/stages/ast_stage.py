@@ -42,4 +42,9 @@ class ASTStage:
         predicted_label = self.id2label[predicted_class_idx]
         confidence = probabilities[0][predicted_class_idx].item()
 
+        scores = {}
+        for idx, prob in enumerate(probabilities[0]):
+            label = self.id2label[idx]
+            scores[label] = round(float(prob.item()), 4)
+
         return predicted_label, confidence

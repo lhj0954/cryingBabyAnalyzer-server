@@ -54,6 +54,20 @@ class InferApiPipeline:
                 "message": "오디오가 비어 있습니다."
             }
 
+        duration_sec = len(wav_full) / sr
+
+        if duration_sec < 2.0:
+            return {
+                "filename": filename,
+                "sample_rate": sr,
+                "duration_sec": round(duration_sec, 3),
+                "triggered": False,
+                "trigger_time_sec": None,
+                "analysis_window": None,
+                "prediction": None,
+                "message": "울음소리가 불분명합니다. 2초 이상의 오디오가 필요합니다."
+            }
+
         ast_chunk, ast_start_idx, ast_end_idx, total_samples = self._select_ast_chunk(wav_full, sr)
 
         pred_result = self.ast_model.predict(ast_chunk, sr)
