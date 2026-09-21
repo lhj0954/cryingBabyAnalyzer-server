@@ -8,6 +8,9 @@ import uuid
 current_dir = os.path.dirname(os.path.abspath(__file__))    # src/server
 src_dir = os.path.abspath(os.path.join(current_dir, ".."))  # src
 
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 if src_dir not in sys.path:
     sys.path.append(src_dir)
 
