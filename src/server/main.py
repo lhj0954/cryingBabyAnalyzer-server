@@ -18,7 +18,14 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
 from pipelines.infer_api_pipeline import InferApiPipeline
-from records_db import init_db, insert_record, list_records, get_record, get_stats
+from records_db import (
+    init_db,
+    insert_record,
+    list_records,
+    get_record,
+    get_stats,
+    update_feedback,
+)
 
 
 app = FastAPI(title="cryingBabyAnalyzer API")
@@ -70,6 +77,16 @@ class CryRecord(BaseModel):
     confidence: Optional[float] = None
     duration_sec: Optional[float] = None
     message: Optional[str] = None
+    feedback_correct: Optional[bool] = None
+    actual_reason: Optional[str] = None
+    caregiver_action: Optional[str] = None
+    feedback_created_at: Optional[str] = None
+
+
+class FeedbackRequest(BaseModel):
+    correct: bool
+    actual_reason: Optional[str] = None
+    caregiver_action: Optional[str] = None
 
 
 class LabelCount(BaseModel):
@@ -108,6 +125,32 @@ def record_detail(record_id: int):
     record = get_record(record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="기록을 찾을 수 없습니다.")
+    return record
+
+
+@app.post("/records/{record_id}/feedback", response_model=CryRecord)
+def save_record_feedback(record_id: int, feedback: FeedbackRequest):
+    if not feedback.correct and not feedback.actual_reason:
+        raise HTTPException(
+            status_code=400,
+            detail="분석 결과가 틀렸다면 실제 울음 원인을 선택해주세요.",
+        )
+
+    updated = update_feedback(
+        record_id,
+        correct=feedback.correct,
+        actual_reason=feedback.actual_reason,
+        caregiver_action=feedback.caregiver_action,
+        feedback_created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="피드백을 연결할 울음 기록을 찾을 수 없습니다.")
+
+    record = get_record(record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="기록을 찾을 수 없습니다.")
+
     return record
 
 
