@@ -11,6 +11,15 @@ def get_connection():
     return conn
 
 
+def _ensure_column(conn: sqlite3.Connection, column_name: str, column_sql: str) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(cry_records)").fetchall()
+    }
+    if column_name not in columns:
+        conn.execute(f"ALTER TABLE cry_records ADD COLUMN {column_name} {column_sql}")
+
+
 def init_db() -> None:
     with get_connection() as conn:
         conn.execute(
@@ -24,10 +33,21 @@ def init_db() -> None:
                 label TEXT,
                 confidence REAL,
                 duration_sec REAL,
-                message TEXT
+                message TEXT,
+                feedback_correct INTEGER,
+                actual_reason TEXT,
+                caregiver_action TEXT,
+                feedback_created_at TEXT
             )
             """
         )
+
+        # 기존 DB도 그대로 사용할 수 있도록 누락 컬럼만 추가
+        _ensure_column(conn, "feedback_correct", "INTEGER")
+        _ensure_column(conn, "actual_reason", "TEXT")
+        _ensure_column(conn, "caregiver_action", "TEXT")
+        _ensure_column(conn, "feedback_created_at", "TEXT")
+
         conn.commit()
 
 
@@ -70,6 +90,36 @@ def insert_record(
         )
         conn.commit()
         return int(cursor.lastrowid)
+
+
+def update_feedback(
+    record_id: int,
+    *,
+    correct: bool,
+    actual_reason: Optional[str],
+    caregiver_action: Optional[str],
+    feedback_created_at: str,
+) -> bool:
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE cry_records
+            SET feedback_correct = ?,
+                actual_reason = ?,
+                caregiver_action = ?,
+                feedback_created_at = ?
+            WHERE id = ?
+            """,
+            (
+                1 if correct else 0,
+                actual_reason,
+                caregiver_action,
+                feedback_created_at,
+                record_id,
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
 
 
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
