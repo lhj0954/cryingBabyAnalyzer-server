@@ -47,4 +47,4 @@ class ASTStage:
             label = self.id2label[idx]
             scores[label] = round(float(prob.item()), 4)
 
-        return predicted_label, confidence
+        return predicted_label, confidence, scores
