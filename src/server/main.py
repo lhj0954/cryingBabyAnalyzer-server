@@ -1,9 +1,6 @@
 import os
 import sys
-from typing import Optional, Dict, List
-from pathlib import Path
-from datetime import datetime
-import uuid
+from typing import Optional, Dict
 
 current_dir = os.path.dirname(os.path.abspath(__file__))    # src/server
 src_dir = os.path.abspath(os.path.join(current_dir, ".."))  # src
@@ -18,22 +15,10 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
 from pipelines.infer_api_pipeline import InferApiPipeline
-from records_db import (
-    init_db,
-    insert_record,
-    list_records,
-    get_record,
-    get_stats,
-    update_feedback,
-)
 
 
 app = FastAPI(title="cryingBabyAnalyzer API")
 pipeline = InferApiPipeline()
-
-UPLOAD_DIR = Path("uploaded_audio")
-UPLOAD_DIR.mkdir(exist_ok=True)
-init_db()
 
 
 class AnalysisWindow(BaseModel):
@@ -67,91 +52,9 @@ class InferResponse(BaseModel):
     message: str
 
 
-class CryRecord(BaseModel):
-    id: int
-    created_at: str
-    filename: str
-    saved_filename: str
-    audio_path: str
-    label: Optional[str] = None
-    confidence: Optional[float] = None
-    duration_sec: Optional[float] = None
-    message: Optional[str] = None
-    feedback_correct: Optional[bool] = None
-    actual_reason: Optional[str] = None
-    caregiver_action: Optional[str] = None
-    feedback_created_at: Optional[str] = None
-
-
-class FeedbackRequest(BaseModel):
-    correct: bool
-    actual_reason: Optional[str] = None
-    caregiver_action: Optional[str] = None
-
-
-class LabelCount(BaseModel):
-    label: Optional[str] = None
-    count: int
-
-
-class HourCount(BaseModel):
-    hour: str
-    count: int
-
-
-class RecordsStats(BaseModel):
-    total: int
-    by_label: List[LabelCount]
-    by_hour: List[HourCount]
-
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-
-@app.get("/records", response_model=List[CryRecord])
-def records(date: Optional[str] = None, label: Optional[str] = None, limit: int = 100):
-    return list_records(date=date, label=label, limit=limit)
-
-
-@app.get("/records/stats", response_model=RecordsStats)
-def records_stats(date: Optional[str] = None):
-    return get_stats(date=date)
-
-
-@app.get("/records/{record_id}", response_model=CryRecord)
-def record_detail(record_id: int):
-    record = get_record(record_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="기록을 찾을 수 없습니다.")
-    return record
-
-
-@app.post("/records/{record_id}/feedback", response_model=CryRecord)
-def save_record_feedback(record_id: int, feedback: FeedbackRequest):
-    if not feedback.correct and not feedback.actual_reason:
-        raise HTTPException(
-            status_code=400,
-            detail="분석 결과가 틀렸다면 실제 울음 원인을 선택해주세요.",
-        )
-
-    updated = update_feedback(
-        record_id,
-        correct=feedback.correct,
-        actual_reason=feedback.actual_reason,
-        caregiver_action=feedback.caregiver_action,
-        feedback_created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    )
-
-    if not updated:
-        raise HTTPException(status_code=404, detail="피드백을 연결할 울음 기록을 찾을 수 없습니다.")
-
-    record = get_record(record_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="기록을 찾을 수 없습니다.")
-
-    return record
 
 
 async def _run_infer(file: UploadFile):
@@ -167,36 +70,15 @@ async def _run_infer(file: UploadFile):
         if not file_bytes:
             raise HTTPException(status_code=400, detail="빈 파일입니다.")
 
-        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        saved_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{file.filename}"
-        saved_path = UPLOAD_DIR / saved_name
-
-        with open(saved_path, "wb") as f:
-            f.write(file_bytes)
-
-        result = pipeline.predict_from_bytes(file_bytes, filename=file.filename)
-
-        prediction = result.get("prediction") if isinstance(result, dict) else None
-        label = None
-        confidence = None
-
-        if prediction:
-            label = prediction.get("label")
-            confidence = prediction.get("confidence")
-
-        record_id = insert_record(
-            created_at=created_at,
+        # 서버는 추론만 수행합니다.
+        # 울음 음원, 분석 기록, 보호자 피드백은 Android 태블릿에 저장합니다.
+        result = pipeline.predict_from_bytes(
+            file_bytes,
             filename=file.filename,
-            saved_filename=saved_name,
-            audio_path=str(saved_path),
-            label=label,
-            confidence=confidence,
-            duration_sec=result.get("duration_sec") if isinstance(result, dict) else None,
-            message=result.get("message") if isinstance(result, dict) else None,
         )
 
         if isinstance(result, dict):
-            result["record_id"] = record_id
+            result["record_id"] = None
 
         return result
 
